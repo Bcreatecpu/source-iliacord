@@ -4,3 +4,5 @@
 .shell{overflow:hidden}.workspace{min-height:0;overflow:hidden}.content{min-height:0}.friend[hidden]{display:none}
 
 .video-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.video-actions [hidden]{display:none}.peer video{aspect-ratio:16/9;background:#121315}.peer.expanded-video{position:fixed;inset:0;z-index:90;border-radius:0;display:flex;flex-direction:column;justify-content:center;background:#121315}.peer.expanded-video video{max-height:80dvh}.peer video[hidden]{display:none}
+
+.fps-control{display:flex;align-items:center;gap:8px;margin:0;font-size:14px}.fps-control select{width:auto;max-width:210px;padding:10px}
