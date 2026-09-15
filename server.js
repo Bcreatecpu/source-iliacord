@@ -76,7 +76,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({
-  limit: '2mb'
+  limit: '12mb'
 }));
 app.use('/api', rateLimit({
   windowMs: 60000,
