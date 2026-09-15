@@ -14,6 +14,7 @@ export function openDatabase() {
     return {
       execute: (sql, args = []) => client.execute({ sql, args }),
       executeMultiple: sql => client.executeMultiple(sql),
+      batch: statements => client.batch(statements, "write"),
       close: () => client.close(),
     };
   }
@@ -30,6 +31,7 @@ export function openDatabase() {
       return { rows: [], ...stmt.run(...args) };
     },
     async executeMultiple(sql) { local.exec(sql); },
+    async batch(statements) { local.exec('BEGIN IMMEDIATE');try{const results=statements.map(({sql,args=[]})=>local.prepare(sql).run(...args));local.exec('COMMIT');return results;}catch(e){local.exec('ROLLBACK');throw e;} },
     close: () => local.close(),
   };
 }

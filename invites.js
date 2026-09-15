@@ -18,9 +18,10 @@ export async function installInvites(app,db,io,getUser){
   const image=String(req.body.image||'');
   if(image.length>700000||!/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(image))return res.status(400).json({error:'Escolha uma imagem PNG, JPG, WebP ou GIF de até 500 KB.'});
   await db.execute('INSERT INTO server_icons(sid,image) VALUES(?,?) ON CONFLICT(sid) DO UPDATE SET image=excluded.image',[req.params.sid,image]);
+  io.emit('refresh');
   res.json({ok:true});
  });
- app.get('/invite/:code/icon',async(req,res)=>{const s=await preview(req.params.code);if(!s?.photo)return res.redirect('/icon-512.png');const [,type,data]=s.photo.match(/^data:(image\/[^;]+);base64,(.+)$/);res.set('Cache-Control','public,max-age=60').type(type).send(Buffer.from(data,'base64'));});
+ app.get('/invite/:code/icon',async(req,res)=>{const s=await preview(req.params.code);if(!s?.photo)return res.redirect('/ilia-icon-512.png');const [,type,data]=s.photo.match(/^data:(image\/[^;]+);base64,(.+)$/);res.set('Cache-Control','no-store').type(type).send(Buffer.from(data,'base64'));});
  app.get('/invite/:code',async(req,res)=>{
   const s=await preview(req.params.code);res.set('Cache-Control','no-store');
   if(!s)return res.status(404).type('html').send('<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Convite indisponível</title><body><h1>Convite inválido ou indisponível</h1><a href="/">Abrir IliaCord</a></body></html>');

@@ -1,3 +1,5 @@
+import {migratePlus,installPlus} from './plus.js';
+import {installMedia} from './media.js';
 import {installInvites} from './invites.js';
 import express from 'express';
 import { createServer } from 'node:http';
@@ -41,6 +43,8 @@ CREATE TABLE IF NOT EXISTS channels(id TEXT PRIMARY KEY,sid TEXT,name TEXT,type 
 CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,room TEXT,uid TEXT,body TEXT,created INTEGER);
 CREATE INDEX IF NOT EXISTS room_messages ON messages(room,created);
 CREATE TABLE IF NOT EXISTS reactions(mid TEXT,uid TEXT,emoji TEXT,PRIMARY KEY(mid,uid,emoji));`);
+await migratePlus(db);
+if(!(await db.execute('PRAGMA table_info(messages)')).rows.some(c=>c.name==='attachments'))await db.execute("ALTER TABLE messages ADD COLUMN attachments TEXT DEFAULT '[]'");
 const one = async (q, ...p) => (await db.execute(q, p)).rows[0],
   all = async (q, ...p) => (await db.execute(q, p)).rows,
   run = async (q, ...p) => db.execute(q, p),
@@ -72,7 +76,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({
-  limit: '1mb'
+  limit: '2mb'
 }));
 app.use('/api', rateLimit({
   windowMs: 60000,
@@ -125,6 +129,8 @@ app.use('/api', async (req, res, next) => {
   });
   next();
 });
+installPlus(app,db,io);
+await installMedia(app,db,validRoom);
 app.post('/api/logout', async (req, res) => {
   await run('DELETE FROM sessions WHERE token=?', digest(req.headers.authorization.replace('Bearer ', '')));
   for (const s of io.sockets.sockets.values()) if (s.data.token === req.headers.authorization.replace('Bearer ', '')) s.disconnect();
@@ -136,7 +142,7 @@ app.get('/api/state', async (req, res) => {
   const uid = req.user.id;
   res.json({
     user: req.user,
-    servers: await all('SELECT servers.* FROM servers JOIN members ON servers.id=members.sid WHERE uid=?', uid),
+    servers: await all('SELECT servers.*, server_icons.image AS photo FROM servers JOIN members ON servers.id=members.sid LEFT JOIN server_icons ON server_icons.sid=servers.id WHERE uid=?', uid),
     channels: await all('SELECT channels.* FROM channels JOIN members ON channels.sid=members.sid WHERE uid=?', uid),
     friends: await Promise.all((await all('SELECT * FROM friends WHERE sender=? OR receiver=?', uid, uid)).map(async f => ({
       ...f,
@@ -154,7 +160,7 @@ app.patch('/api/profile', async (req, res) => {
   if (avatar.length > 700000) return res.status(400).json({
     error: 'Escolha uma imagem de até 500 KB.'
   });
-  await run('UPDATE users SET display=?,pronouns=?,bio=?,avatar=?,color=?,decoration=?,status=? WHERE id=?', String(b.display || req.user.name).slice(0, 40), String(b.pronouns || '').slice(0, 30), String(b.bio || '').slice(0, 240), avatar, /^#[0-9a-f]{6}$/i.test(b.color) ? b.color : '#8da9ff', ['orbit', 'glow', 'none'].includes(b.decoration) ? b.decoration : 'orbit', String(b.status || 'Disponível').slice(0, 60), req.user.id);
+  await run('UPDATE users SET display=?,pronouns=?,bio=?,avatar=?,color=?,decoration=?,status=? WHERE id=?', String(b.display || req.user.name).slice(0, 40), String(b.pronouns || '').slice(0, 30), String(b.bio || '').slice(0, 240), avatar, /^#[0-9a-f]{6}$/i.test(b.color) ? b.color : '#8da9ff', req.user.decoration || 'none', String(b.status || 'Disponível').slice(0, 60), req.user.id);
   io.emit('refresh');
   res.json({
     ok: true
@@ -225,16 +231,18 @@ app.get('/api/members/:sid', async (req, res) => {
 });
 app.get('/api/messages/:room', async (req, res) => {
   if (!(await validRoom(req.user.id, req.params.room))) return res.sendStatus(403);
-  res.json(await Promise.all((await all('SELECT * FROM (SELECT * FROM messages WHERE room=? ORDER BY created DESC LIMIT 100) ORDER BY created', req.params.room)).map(async m => ({
-    ...m,
-    user: publicUser(await one('SELECT * FROM users WHERE id=?', m.uid)),
-    reactions: await all('SELECT emoji,COUNT(*) count FROM reactions WHERE mid=? GROUP BY emoji', m.id)
-  }))));
+  const messages=await all('SELECT * FROM (SELECT * FROM messages WHERE room=? ORDER BY created DESC LIMIT 100) ORDER BY created',req.params.room);
+  if(!messages.length)return res.json([]);
+  const users=[...new Set(messages.map(m=>m.uid))];
+  const authors=new Map((await all('SELECT * FROM users WHERE id IN ('+users.map(()=>'?').join(',')+')',...users)).map(u=>[u.id,publicUser(u)]));
+  const reactions=await all('SELECT mid,emoji,COUNT(*) count FROM reactions WHERE mid IN ('+messages.map(()=>'?').join(',')+') GROUP BY mid,emoji',...messages.map(m=>m.id));
+  res.json(messages.map(m=>({...m,attachments:JSON.parse(m.attachments||'[]'),user:authors.get(m.uid),reactions:reactions.filter(r=>r.mid===m.id)})));
 });
 app.delete('/api/messages/:id', async (req, res) => {
   const m = await one('SELECT * FROM messages WHERE id=? AND uid=?', req.params.id, req.user.id);
   if (m) {
     await run('DELETE FROM messages WHERE id=?', m.id);
+    for(const media of JSON.parse(m.attachments||'[]')){await run('DELETE FROM media_chunks WHERE mid=?',media.id);await run('DELETE FROM media WHERE id=? AND uid=?',media.id,req.user.id);}
     await run('DELETE FROM reactions WHERE mid=?', m.id);
     io.to(m.room).emit('message');
   }
@@ -276,8 +284,9 @@ io.use(async (socket, next) => {
   }
 });
 io.on('connection', s => {
+  s.join('user:'+s.data.user.id);
   io.emit('refresh');
-  let last = 0;
+  let burst = [];
   const leave = () => {
     if (s.data.voice) {
       s.to(s.data.voice).emit('peer-left', s.id);
@@ -301,18 +310,18 @@ io.on('connection', s => {
       error: 'Acesso negado'
     });
     const body = String(b.body || '').trim();
-    if (!body || body.length > 4000) return ack?.({
-      error: 'Envie de 1 a 4000 caracteres.'
-    });
-    if (Date.now() - last < 500) return ack?.({
-      error: 'Espere um instante.'
-    });
-    last = Date.now();
-    await run('INSERT INTO messages VALUES(?,?,?,?,?)', id(), b.room, s.data.user.id, body, Date.now());
+    const ids=Array.isArray(b.attachments)?b.attachments:[];
+    if((!body&&!ids.length)||body.length>4000||ids.length>4)return ack?.({error:'Envie texto ou até 4 anexos.'});
+    burst=burst.filter(t=>Date.now()-t<10000);if(burst.length>=30)return ack?.({error:'Muitas mensagens seguidas. Aguarde alguns segundos.'});burst.push(Date.now());
+    const attachments=[];
+    for(const mediaId of [...new Set(ids)]){const media=await one('SELECT id,name,mime,size FROM media WHERE id=? AND uid=? AND room=? AND ready=1',String(mediaId),s.data.user.id,b.room);if(!media)return ack?.({error:'Anexo inválido para esta conversa.'});attachments.push(media);}
+    const mid=id(),created=Date.now();
+    await run('INSERT INTO messages(id,room,uid,body,created,attachments) VALUES(?,?,?,?,?,?)',mid,b.room,s.data.user.id,body,created,JSON.stringify(attachments));
     io.to(b.room).emit('message');
-    ack?.({
-      ok: true
-    });
+    ack?.({ok:true,id:mid,created});
+    const recipients=b.room.startsWith('dm:')?b.room.slice(3).split(':'):(await all('SELECT uid FROM members WHERE sid=(SELECT sid FROM channels WHERE id=?)',b.room)).map(m=>m.uid);
+    const sender=publicUser(await one('SELECT * FROM users WHERE id=?',s.data.user.id));
+    for(const uid of recipients)if(uid!==sender.id)io.to('user:'+uid).emit('notification',{room:b.room,user:sender,body:body.slice(0,180),id:mid});
   }));
   s.on('typing', () => {
     if (s.data.text) s.to(s.data.text).emit('typing', s.data.user.display);
@@ -357,8 +366,8 @@ io.on('connection', s => {
 app.use(express.static('public'));
 app.use((err, req, res, next) => {
   console.error(err.message);
-  res.status(500).json({
-    error: 'Não foi possível concluir. Tente novamente.'
+  res.status(err.status===413?413:500).json({
+    error: err.status===413?'Arquivo muito grande. O limite é 12 MB por anexo.':'Não foi possível concluir. Tente novamente.'
   });
 });
 http.listen(process.env.PORT || 3000, () => console.log('IliaCord pronto em http://localhost:' + (process.env.PORT || 3000)));
