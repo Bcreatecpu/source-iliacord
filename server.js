@@ -1,3 +1,4 @@
+import {installInvites} from './invites.js';
 import express from 'express';
 import { createServer } from 'node:http';
 import { openDatabase } from './database.js';
@@ -77,6 +78,7 @@ app.use('/api', rateLimit({
   windowMs: 60000,
   limit: 180
 }));
+await installInvites(app,db,io,getUser);
 app.post('/api/auth', rateLimit({
   windowMs: 900000,
   limit: 30
