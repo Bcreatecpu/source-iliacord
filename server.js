@@ -157,6 +157,7 @@ app.patch('/api/profile', async (req, res) => {
   if (avatar && !/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(avatar)) return res.status(400).json({
     error: 'Imagem inválida.'
   });
+  if (avatar!==req.user.avatar && avatar.startsWith('data:image/gif;') && Buffer.from(avatar.split(',')[1], 'base64').length>10000) return res.status(400).json({error:'O GIF de perfil deve ter até 10 KB.'});
   if (avatar.length > 700000) return res.status(400).json({
     error: 'Escolha uma imagem de até 500 KB.'
   });
