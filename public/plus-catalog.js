@@ -1,10 +1,12 @@
 export const PLUS_ITEMS = {
+ moonfeather:{name:'Placa Pluma lunar',slot:'nameEffect'},
  orbital3d:{name:'Órbitas 3D',slot:'decoration'}, crystal3d:{name:'Cristal holográfico',slot:'decoration'}, portal3d:{name:'Portal dimensional',slot:'profileEffect'}, hologram:{name:'Placa holográfica',slot:'nameEffect'},
  angel:{name:'Asas de anjo',slot:'decoration'}, neon:{name:'Órbita neon',slot:'decoration'}, fire:{name:'Aura solar',slot:'decoration'}, frost:{name:'Cristal azul',slot:'decoration'}, petals:{name:'Pétalas',slot:'decoration'}, royal:{name:'Coroa astral',slot:'decoration'}, prism:{name:'Prisma',slot:'decoration'}, lunar:{name:'Anel lunar',slot:'decoration'}, hearts:{name:'Corações',slot:'decoration'}, glitch:{name:'Glitch',slot:'decoration'},
  stardust:{name:'Poeira estelar',slot:'profileEffect'}, aurora:{name:'Aurora',slot:'profileEffect'}, rain:{name:'Chuva neon',slot:'profileEffect'}, embers:{name:'Brasas',slot:'profileEffect'}, snow:{name:'Neve',slot:'profileEffect'}, bubbles:{name:'Bolhas',slot:'profileEffect'},
  galaxy:{name:'Placa galáctica',slot:'nameEffect'}, sunset:{name:'Placa pôr do sol',slot:'nameEffect'}, ice:{name:'Placa de gelo',slot:'nameEffect'}, candy:{name:'Placa candy',slot:'nameEffect'}, terminal:{name:'Placa digital',slot:'nameEffect'}
 };
 export const PLUS_COMBOS = [
+ {id:'moon-feather',name:'Pluma lunar',color:'#dfd3ec',items:['moonfeather'],quest:true},
  {id:'dimension',name:'Outra dimensão',color:'#a4bcff',items:['orbital3d','portal3d','hologram']},
  {id:'crystal',name:'Cristal holográfico',color:'#e6b5ff',items:['crystal3d']},
  {id:'celestial',name:'Celestial',color:'#b8c8ff',items:['angel','stardust','galaxy']},

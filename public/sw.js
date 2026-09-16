@@ -1,4 +1,4 @@
-const CACHE='iliacord-v10';const FILES=['/','/style.css','/social.css','/app.js','/enhancements.js','/notifications.js','/favicon.ico','/plus-catalog.js','/ilia-icon-192.png','/ilia-icon-512.png','/angel-wings.png','/manifest.webmanifest'];
+const CACHE='iliacord-v11';const FILES=['/','/style.css','/social.css','/app.js','/enhancements.js','/notifications.js','/favicon.ico','/plus-catalog.js','/ilia-icon-192.png','/ilia-icon-512.png','/angel-wings.png','/manifest.webmanifest'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)));self.skipWaiting()});
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()])));
 self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==location.origin||u.pathname.startsWith('/api/')||u.pathname.startsWith('/invite/')||u.pathname.startsWith('/socket.io/')||u.pathname.endsWith('config.js'))return;e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)))});
