@@ -12,8 +12,17 @@ export function installPlus(app,db,io){
  app.get('/profile-banners/:id',async(req,res)=>{const rows=(await db.execute('SELECT data,mime FROM profile_banners WHERE id=? ORDER BY part',[req.params.id])).rows;if(!rows.length)return res.sendStatus(404);res.set('Cache-Control','public,max-age=31536000,immutable').type(rows[0].mime).send(Buffer.from(rows.map(r=>r.data).join(''),'base64'));});
  const owned=async uid=>(await db.execute('SELECT combo FROM plus_inventory WHERE uid=?',[uid])).rows.map(r=>r.combo);
  app.get('/api/plus',async(req,res)=>res.json({owned:await owned(req.user.id)}));
+ app.post('/api/plus/quest',async(req,res)=>{
+  const answers=req.body.answers;
+  if(!Array.isArray(answers)||answers.length!==3||!answers.every(v=>Number.isInteger(v)&&v>=0&&v<3))return res.status(400).json({error:'Responda às três perguntas.'});
+  const correct=[1,2,0],score=answers.filter((v,i)=>v===correct[i]).length;
+  if(score<3)return res.json({completed:false,score});
+  await db.execute('INSERT OR IGNORE INTO plus_inventory VALUES(?,?,?)',[req.user.id,'moon-feather',Date.now()]);
+  res.json({completed:true,score,owned:await owned(req.user.id)});
+ });
  app.post('/api/plus/acquire',async(req,res)=>{
   const combo=PLUS_COMBOS.find(c=>c.id===req.body.combo);if(!combo)return res.status(400).json({error:'Combo não encontrado.'});
+  if(combo.quest)return res.status(403).json({error:'Conclua o quiz para desbloquear esta recompensa.'});
   await db.execute('INSERT OR IGNORE INTO plus_inventory VALUES(?,?,?)',[req.user.id,combo.id,Date.now()]);
   res.json({owned:await owned(req.user.id)});
  });
